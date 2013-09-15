@@ -27,7 +27,7 @@ with Redis's protocol will feel pretty at home.
 CREATE
 ------
 
-POST /<domain> [<acl>]
+POST /&lt;domain&gt; [&lt;acl&gt;]
 
 	Creates the specified domain if and only if it doesn't already exist
 
@@ -37,7 +37,7 @@ POST /<domain> [<acl>]
 		{ "create" : "$USER", "update" : "$USER",
 		  "read" : ".*", "delete" : "$USER" }
 
-POST /<domain>/<bucket> [<acl>]
+POST /&lt;domain&gt;/&lt;bucket&gt; [&lt;acl&gt;]
 
 	Creates the specified bucket if and only if it doesn't already exist.
 	The user must have the "create" attribute on the given domain for the
@@ -48,14 +48,14 @@ POST /<domain>/<bucket> [<acl>]
 		{ "create" : "$USER", "update" : ".*",
 		  "read" : ".*", "delete" : "$USER" }
 
-POST /<domain>/<bucket>/<key> <JSON>
+POST /&lt;domain&gt;/&lt;bucket&gt;/&lt;key&gt; &lt;JSON&gt;
 	
 	Instantiates a new object with the given key, if and only if the key 
 	doesn't exist already.  The value of the key will be the mandatory JSON
 	payload.  This payload may be 0, '', [], or {} depending on the type of nil
 	desired.	
 
-POST /<domain>/<bucket>/<key>/<path> <JSON>
+POST /&lt;domain&gt;/&lt;bucket&gt;/&lt;key&gt;/&lt;path&gt; &lt;JSON&gt;
 
 	This will inject a new value into an existing object at the given path.
 	If the key and path already exist, then no value will be created.
@@ -64,20 +64,20 @@ POST /<domain>/<bucket>/<key>/<path> <JSON>
 READ
 ----
 
-GET /<domain>
+GET /&lt;domain&gt;
 	
 	Returns a list of buckets associated with the given domain.
 
-GET /<domain>/<bucket>
+GET /&lt;domain&gt;/&lt;bucket&gt;
 
 	Returns a list of keys associated with the given bucket.
 
-GET /<domain>/<bucket>/<key>
+GET /&lt;domain&gt;/&lt;bucket&gt;/&lt;key&gt;
 
 	Returns the JSON object associated with the key, and sets up
 	a watch to notify the getter of any alterations to that key.
 
-GET /<domain>/<bucket>/<key>/<path>
+GET /&lt;domain&gt;/&lt;bucket&gt;/&lt;key&gt;/&lt;path&gt;
 
 	Returns the value associated with the given path.  The path
 	is a '/' separated list of keys which may consist of strings
@@ -87,23 +87,23 @@ GET /<domain>/<bucket>/<key>/<path>
 UPDATE
 ------
 
-PUT /<domain> <acl>
+PUT /&lt;domain&gt; &lt;acl&gt;
 
 	Updates the ACL for the given domain.  The "update" attribute on the
 	domain must have been specified for the connected user.  At least one
 	user must have "update" access, and "$USER" will automatically be appended.
 
-PUT /<domain>/<bucket> <acl>
+PUT /&lt;domain&gt;/&lt;bucket&gt; &lt;acl&gt;
 
 	Updates the ACL on the given bucket.  The "update" attribute must be given to
 	the connected user on the domain for this operation to succeed.  
 
-PUT /<domain>/<bucket>/<key> <JSON>
+PUT /&lt;domain&gt;/&lt;bucket&gt;/&lt;key&gt; &lt;JSON&gt;
 
 	Updates the value associated with the given key.  The user doing the update
 	must have the "update" attribute available on the associated bucket.
 
-PUT /<domain>/<bucket>/<key>/<path> <JSON>
+PUT /&lt;domain&gt;/&lt;bucket&gt;/&lt;key&gt;/&lt;path&gt; &lt;JSON&gt;
 
 	Updates the value at the given path if and only if the given path already 
 	exists.  The user must also have the "update" attribute on teh associated bucket
@@ -112,22 +112,22 @@ PUT /<domain>/<bucket>/<key>/<path> <JSON>
 DELETE
 ------
 
-DELETE /<domain>
+DELETE /&lt;domain&gt;
 
 	Deletes all of the buckets associated with the given domain.  The user must 
 	have the "delete" attribute on the domain to delete the buckets.
 
-DELETE /<domain>/<bucket>
+DELETE /&lt;domain&gt;/&lt;bucket&gt;
 
 	Deletes all of the keys associated with the given bucket.  The user must have
 	the "delete" attribute on the bucket.
 
-DELETE /<domain>/<bucket>/<key>
+DELETE /&lt;domain&gt;/&lt;bucket&gt;/&lt;key&gt;
 
 	Deletes the given key and value from the bucket.  The user must have the "delete"
 	attribute on the bucket to delete a key.  
 
-DELETE /<domain>/<bucket>/<key>/<path>
+DELETE /&lt;domain&gt;/&lt;bucket&gt;/&lt;key&gt;/&lt;path&gt;
 
 	Deletes the value at the given path if and only if the path exists.  The user
 	must have the "update" attribute on the bucket to delete a path.  This is not
