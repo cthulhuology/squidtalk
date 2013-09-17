@@ -1,5 +1,7 @@
 #!/usr/bin/env perl
 use Mojolicious::Lite;
+use AMQP::Subscriber;
+use AMQP::Publisher;
 
 get '/' => sub {
   my $self = shift;
