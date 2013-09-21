@@ -44,10 +44,17 @@ begin
 end
 $$ language plpgsql;
 
+-- disables the user for the given domain.  if the user is the owner of the domain
+-- the entire domain and all if its buckets and data are also disabled for safey
 create or replace function squidtalk.disable_user( _domain text, _email text ) returns boolean as $$
 begin
 	update squidtalk.users set active = false 
 		where domain = _domain and email = _email and active;
+	select active from squidtalk.domains 
+		where name = _domain and owner = _email and active;
+	if found then
+		select squidtalk.disable_domain(_domain,_email);
+	end;
 	return FOUND;
 end
 $$ language plpgsql;
@@ -179,7 +186,11 @@ begin
 	if not found or not act then
 		return false;
 	end;
+	-- NB: This disables all of the buckets and data associated with
+	-- the domain.  The data is retained but is inaccessible!
 	update squidtalk.domains set active = false where name = _domain;
+	update squidtalk.buckets set active = false where domain = _domain;
+	update squidtalk.value set active = false where domain = _domain;
 	return found;	
 end
 $$ language plpgsql;
@@ -248,24 +259,82 @@ create table squidtalk.buckets (
 );
 
 create or replace function squidtalk.create_bucket( _domain text, _bucket text, _user text ) returns boolean as $$
-
+declare
+	act boolean;
+begin
+	-- verify user has create power on the domain level
+	select squidtalk.apply_acl(_domain,_domain,_user,'create') into act;
+	if not act then
+		return false;
+	end;
+	-- verify that the bucket doesn't already exist in this domain
+	select name from squidtalk.buckets
+		where domain = _domain and name = _bucket and active;
+	if found then
+		return false;
+	end;
+	insert into squidtalk.buckets (domain, name, owner, created, active)
+		values ( _domain, _bucket, _user, now(), true );
+	-- create the default acl where the owner can do anything
+	insert into squidtalk.acls ( domain, bucket, permissions, created, active)
+		values ( _domain, _bucket, 
+			('{ "create": ["' || _user || '"],' ||
+			'"read": ["' || _user || '"],' ||
+			'"update": ["' || _user || '"],' ||
+			'"delete": ["' || _user || '"] }')::json ,
+			now(), true );
+	return true;
+end	
 $$ language plpgsql;
 
 create or replace function squidtalk.disable_bucket( _domain text, _bucket text, _user text ) returns boolean as $$
-
+declare
+	act boolean;
+begin
+	-- user must have update capability on the top level domain, not bucket!!!
+	-- if _bucket is domain then it doesn't allow you to wack the domain
+	select squidtalk.apply_acl(_domain,_domain,_user, "update") into act;
+	if not act or domain = _bucket then
+		return false;
+	end;
+	-- NB: this disables all data associated with the bucket as well!
+	-- the data is still there, it just can't be accessed
+	update squidtalk.buckets set active = false
+		where domain = _domain and name = _bucket;
+	update squidtalk.value set active = false
+		where domain = _domain and bucket = _bucket;
+	update squidtalk.acls set active = false
+		where domain = _domain and bucket = _bucket;
+	return found;
+end
 $$ language plpgsql;
 
 create or replace function squidtalk.delete_bucket( _domain text, _bucket text, _user text ) returns boolean as $$
-
+begin
+	-- user must have delete capability on the top level domain, not bucket!!!
+	select squidtalk.apply_acl(_domain,_domain,_user, "delete") into act;
+	if not act then
+		return false;
+	end;
+	-- NB: this deletes all buckets of the same name on the domain
+	-- and all of the data contained therein.
+	delete from squidtalk.acls where domain = _domain and bucket = _bucket;
+	delete from squidtalk.buckets where domain = _domain and name = _bucket;
+	delete from squidtalk.value where domain = _domain and bucket = _bucket;
+	return true;
+end
 $$ langusge plpgsql;
 
-
 create or replace function squidtalk.update_bucket( _domain text, _bucket text, _user text, _permissions text ) returns boolean as $$
+begin
 
+end
 $$ languge plpgsql;
 
 create or replace function squidtalk.list_buckets( _domain text, _user text ) returns setof text as $$
+begin
 
+end
 $$ language plpgsql;
 
 -- This table squidtalk.contains the key/value pairs for each bucket
