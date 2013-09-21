@@ -90,18 +90,54 @@ end
 $$ language plpgsql;
 
 create or replace function squidtalk.apply_acl( _domain text, _bucket text, _user text, _capability ) returns boolean as $$
-
-	
+declare
+	act boolean;
+begin
+	-- user must be a member of the domain for an acl check
+	-- no anonymous users
+	select active into act from squidtalk.users 
+		where domain = _domain and email = _user;
+	if not found or not act then
+		return false;
+	end;
+	-- conceptually this is what we want the behavior to be
+	-- but I have no idea if this works in practice!
+	select _user << permissions->(_capability) into act from squidtalk.acls
+		where domain = _domain and bucket = _bucket and active;
+	if not found or not act then
+		return false;
+	end;
+	return true;
+end
 $$ language plpgsql;
 
 create or replace function squidtalk.disable_acl( _domain text, bucket text, _user text ) returns boolean as $$
-
+declare 
+	act boolean;
+begin
+	select squidtalk.apply_acl(_domain,_domain,_user,'update') into act;
+	if not act then
+		return false;
+	end;
+	update squidtalk.acls set active = false
+		where domain = _domain and bucket = _bucket;	 	
+	return found;
+end
 $$ language plpgsql;
 
 create or replace function squidtalk.update_acl( _domain text, _bucket text, _user text, _permissions json ) returns boolean as $$
-
+declare
+	act boolean;
+begin
+	select squidtalk.apply_acl( _domain, _domain, _user, 'update') into act;
+	if not act then
+		return false;
+	end;
+	update squidtalk.acls set permissions = _permissions
+		where domain = _domain and bucket = _bucket, and active;
+	return found;	
+end
 $$ language plpgsql;
-
 
 
 -- This table squidtalk.contains the list of domains
