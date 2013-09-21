@@ -1,5 +1,4 @@
 
-
 -- This table squidtalk.maps user accounts to the individual domains
 -- It also serves as the list of names for the acls
 create table squidtalk.users (
@@ -15,25 +14,52 @@ create table squidtalk.users (
 
 create or replace function squidtalk.create_user( _domain text, _email text, _name text ) returns boolean
 as $$
+declare
+	act boolean;
 begin
+	select active into act from squidtalk.users 
+		where domain = _domain and email = _email;
+	if found and act then
+		return true;
+	end;
 	insert into squidtalk.users ( domain, email, name, created, active )
-	values ( _domain, _email, _name, now(), true);	
+		values ( _domain, _email, _name, now(), true);	
+	return FOUND;	
+end
 $$ language plpgsql;
 
 create or replace function squidtalk.login_user( _domain text, _email text, _token text, _expires timestamp ) returns boolean as $$
-
+begin
+	update squidtalk.users set authtoken = _token, expires = _expires, lastseen = now()
+		where domain = _domain and email = _email and active;
+	return FOUND;
+end
 $$ language plpgsql;
 
 create or replace function squidtalk.logout_user( _domain text, _email text ) returns boolean as $$
-
+begin
+	update squidtalk.users set authtoken = '', expires = now(), 
+		where domain = _domain and email = _email and active;
+	return FOUND;
+end
 $$ language plpgsql;
 
 create or replace function squidtalk.disable_user( _domain text, _email text ) returns boolean as $$
-
+begin
+	update squidtalk.users set active = false 
+		where domain = _domain and email = _email and active;
+	return FOUND;
+end
 $$ language plpgsql;
 
 create or replace function squidtalk.active_user( _domain text, _email text ) returns boolean as $$
-
+declare
+	retval boolean;
+begin
+	select active into retval from squidtalk.users
+		where domain = _domain and email = _email;
+	return retval;
+end
 $$ language plpgsql;
 
 -- This table squidtalk.contains the access control lists for each
@@ -51,11 +77,21 @@ create table squidtalk.acls (
 );
 
 create or replace function squidtalk.create_acl( _domain text, _bucket text, _permissions json ) returns boolean as $$
-
+begin
+	select active from squildtalk.acls 
+		where domain = _domain and bucket = _bucket;
+	if found then
+		return false;
+	end;
+	insert into squidtalk.acls ( domain, bucket, permissions, created, active)
+		values ( _domain, _bucket, _permissions, now(), true);
+	return found;
+end
 $$ language plpgsql;
 
 create or replace function squidtalk.apply_acl( _domain text, _bucket text, _user text, _capability ) returns boolean as $$
 
+	
 $$ language plpgsql;
 
 create or replace function squidtalk.disable_acl( _domain text, bucket text, _user text ) returns boolean as $$
