@@ -129,8 +129,8 @@ create or replace function squidtalk.update_acl( _domain text, _bucket text, _us
 declare
 	act boolean;
 begin
-	select squidtalk.apply_acl( _domain, _domain, _user, 'update') into act;
-	if not act then
+	select squidtalk.apply_acl( _domain, _bucket, _user, 'update') into act;
+	if not act or domain = _bucket then
 		return false;
 	end;
 	update squidtalk.acls set permissions = _permissions
@@ -150,23 +150,90 @@ create table squidtalk.domains (
 );
 
 create or replace function squidtalk.create_domain( _domain text, _user text ) returns boolean as $$
-
+begin
+	select name from squidtalk.domains where name = _domain and active;
+	if found then
+		return false;
+	end;
+	insert into squidtalk.domains ( name, owner, created, active )
+		values ( _domain, _user, now(), true );
+	-- create the default acl where the owner can do anything
+	insert into squidtalk.acls ( domain, bucket, permissions, created, active)
+		values ( _domain, _domain, 
+			('{ "create": ["' || _user || '"],' ||
+			'"read": ["' || _user || '"],' ||
+			'"update": ["' || _user || '"],' ||
+			'"delete": ["' || _user || '"] }')::json ,
+			now(), true );
+	return found;
+end
 $$ language plpgsql;
 
 create or replace function squidtalk.disable_domain( _domain text, _user text ) returns boolean as $$
-
+declare
+	act boolean;
+begin
+	-- only the owner of the active domain can disable it
+	select active into act from squidtalk.domain 
+		where name = _domain and owner = _user;
+	if not found or not act then
+		return false;
+	end;
+	update squidtalk.domains set active = false where name = _domain;
+	return found;	
+end
 $$ language plpgsql;
 
 create or replace function squidtalk.update_domain( _domain text, _user text, _permissions json ) returns boolean as $$
-
+declare
+	act boolean;
+begin
+	-- only the owner of the active domain can update the base acl
+	select active into act from squidtalk.domain 
+		where name = _domain and owner = _user;
+	if not found or not act then
+		return false;
+	end;
+	update squidtalk.acls set permissions = _permissions 
+		where domain = _domain and bucket = _domain and active;
+	return found;
+end
 $$ language plpgsql;
 
 create or replace function squidtalk.delete_domain( _domain text, _user text ) returns boolean as $$
-
+declare
+	act boolean;
+begin
+	-- only the owner can delete the entire domain	
+	select active into act from squidtalk.domains
+		where name = _domain and owner = _user;
+	if not found or not act then
+		return false;
+	end;
+	-- NB: this deletes all data associated with the domain!!!!
+	-- once you do this you can not recover.
+	delete from squidtalk.domains where name = _domain and owner = _user;
+	delete from squidtalk.acls where domain = _domain;
+	delete from squidtalk.buckets where domain = _domain;
+	delete from squidtalk.value where domain = _domain;
+	delete from squidtalk.users where domain = _domain;
+	return true;
+end
 $$ language plpgsql;
 
-create or replace function squidtalk.list_domains( _user text ) returns setof text as $$
 
+-- returns a list of domains owned by the given user
+create or replace function squidtalk.list_domains( _user text ) returns setof text as $$
+begin
+	return query select name from domains where owner = _user and active;
+end
+$$ language plpgsql;
+
+-- returns a list of user names for the given domain
+create or replace function squidtalk.list_users( _domain text) returns setof text as $$
+begin
+	return query select name from squidtalk.users where domain = _domain;
+end
 $$ language plpgsql;
 
 
