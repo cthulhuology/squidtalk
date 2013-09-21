@@ -15,7 +15,9 @@ create table squidtalk.users (
 
 create or replace function squidtalk.create_user( _domain text, _email text, _name text ) returns boolean
 as $$
-	
+begin
+	insert into squidtalk.users ( domain, email, name, created, active )
+	values ( _domain, _email, _name, now(), true);	
 $$ language plpgsql;
 
 create or replace function squidtalk.login_user( _domain text, _email text, _token text, _expires timestamp ) returns boolean as $$
