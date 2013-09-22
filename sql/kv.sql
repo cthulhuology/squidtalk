@@ -460,9 +460,29 @@ begin
 end;
 $$ language plpgsql;
 
--- lists 
-create or replace function squidtalk.list_value( _domain text, _bucket text, _user text, _name text ) returns setof json as $$
-
+-- gets the value associated with the given key 
+create or replace function squidtalk.read_value( _domain text, _bucket text, _user text, _name text ) returns setof json as $$
+declare
+	act boolean;
+begin
+	select squidtalk.apply_acl(_domain,_bucket,_user,"read") into act;
+	if not act then
+		return false;
+	end;
+	return query select value from squidtalk.value where domain = _domain and bucket = _bucket and name = _name and active;
+end;
 $$ language plpgsql;
 
+-- gets a list of keys for a given bucket
+create or replace function squidtalk.list_value(_domain text, _bucket text, _user text) return setof text as $$
+declare
+	act boolean;
+begin
+	select squidtalk.apply_acl(_domain,_bucket,_user,"read") into act;
+	if not act then
+		return false;
+	end;
+	return query select name from squidtalk.value where domain = _domain  and bucket = _bucket and active;
+end;
+$$ laguage plpgsql;
 
