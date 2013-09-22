@@ -310,6 +310,8 @@ end
 $$ language plpgsql;
 
 create or replace function squidtalk.delete_bucket( _domain text, _bucket text, _user text ) returns boolean as $$
+declare
+	act boolean;
 begin
 	-- user must have delete capability on the top level domain, not bucket!!!
 	select squidtalk.apply_acl(_domain,_domain,_user, "delete") into act;
@@ -323,8 +325,25 @@ begin
 	delete from squidtalk.value where domain = _domain and bucket = _bucket;
 	return true;
 end
-$$ langusge plpgsql;
+$$ language plpgsql;
 
+
+-- purges all of the inactive values for a given bucket, requires the user has delete permissions on the bucket
+create or replace function squidtalk.purge_bucket( _domain text, _bucket text, _user text) returns boolean as $$
+declare 
+	act boolean;
+begin
+	select squidtalk.apply_acl(_domain,_bucket,_user, "delete") into act;
+	if not act then
+		return false;
+	end;
+	delete from squildtalk.value where domain = _domain and bucket = _bucket and not active;
+	return found;
+end;
+$$ language plpgsql;
+
+
+-- updates the acl assocaited with the bucket
 create or replace function squidtalk.update_bucket( _domain text, _bucket text, _user text, _permissions text ) returns boolean as $$
 declare
 	act boolean;	
@@ -362,20 +381,86 @@ create table squidtalk.value (
 	active boolean
 );
 
+-- creates a new value if and only if the user has permissions and it doesn't already exist
+-- this uses per bucket acls
 create or replace function squidtalk.create_value( _domain text, _bucket text, _user text, _name text, _value json ) returns boolean as $$
-
+declare
+	act boolean;
+begin	
+	select squidtalk.apply_acl(_domain,_bucket,_user,"create") into act;
+	if not act then
+		return false;
+	end;
+	select name from squidtalk.value where domain = _domain and bucket = _bucket and name = _name and active;
+	if found then
+		return false;
+	end;
+	insert into squidtalk.value ( domain, bucket, name, value, created, active ) values ( _domain, _bucket, _user, _name, _value, now(), true);
+	return found;
+end;
 $$ language plgpsql;
 
-create or replace function squidtalk.update_value( _domain text, _bucket text, _user text, _name text, _value json ) returns boolean as $$
 
+-- update value does not replace the existing value but deactiveates it and creates a new value.
+-- this allows for a record of changes to a given value over time.  This also allows an app to create
+-- a value and only grant update capability to an untrusted interface with rollback and audits
+create or replace function squidtalk.update_value( _domain text, _bucket text, _user text, _name text, _value json ) returns boolean as $$
+declare
+	act boolean;
+begin
+	select squidtalk.apply_acl(_domain,_bucket,_user,"update") into act;
+	if not act then
+		return false;
+	end;
+	update squidtalk.value set active = false  where domain = _domain and bucket = _bucket and name = _name and active;
+	insert into squidtalk.value ( domain, bucket, name, value, created, active ) values ( _domain, _bucket, _user, _name, _value, now(), true);
+	return found;
+end;
 $$ languge plpgsql;
 
+-- disables the current value, this leaves no active value so you can create it again but it can also be futher updated.
 create or replace function squidtalk.disable_value(_domain text, _bucket text, _user text, _name text) ) returns boolean as $$ 
-
-create or replace function squidtalk.delete_value( _domain text, _bucket text, _user text, _name text ) returns boolean as $$
-
+declare
+	act boolean;
+begin
+	select squidtalk.apply_acl(_domain,_bucket,_user,"update") into act;
+	if not act then
+		return false;
+	end;
+	update squidtalk.value set active = false where domain = _domain and bucket = _bucket and name = _name and active;
+	return found;
+end;
 $$ language plpgsql;
 
+-- permanently deletes the value and all of it's history, it cannot be recovered once it is deleted
+create or replace function squidtalk.delete_value( _domain text, _bucket text, _user text, _name text ) returns boolean as $$
+declare
+	act boolean;
+begin
+	select squidtalk.apply_acl(_domain,_bucket,_user,"delete") into act;
+	if not act then
+		return false;
+	end;
+	delete from squidtalk.value where domain = _domain and bucket = _bucket, and name = _name;
+	return found;
+end;
+$$ language plpgsql;
+
+-- purges all of the disabled values for a given key, leaving only the current active data
+create or replace function squidtalk.purge_value( _domain text, _bucket text, _user text, _name text ) returns boolean as $$
+declare
+	act boolean;
+begin
+	select squidtalk.apply_acl(_domain,_bucket,_user,"delete") into act;
+	if not act then
+		return false;
+	end;
+	delete from squidtalk.value where domain = _domain and bucket = _bucket and name = _name and not active;
+	return found;
+end;
+$$ language plpgsql;
+
+-- lists 
 create or replace function squidtalk.list_value( _domain text, _bucket text, _user text, _name text ) returns setof json as $$
 
 $$ language plpgsql;
