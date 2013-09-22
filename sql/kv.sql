@@ -326,14 +326,27 @@ end
 $$ langusge plpgsql;
 
 create or replace function squidtalk.update_bucket( _domain text, _bucket text, _user text, _permissions text ) returns boolean as $$
+declare
+	act boolean;	
 begin
-
+	select squidtalk.apply_acl(_domain,_domain,_user, "update") into act;
+	if not act then
+		return false;
+	end;
+	update squidtalk.acls set permissions = _permissions where domain = _domain and bucket = _bucket;
+	return found;
 end
 $$ languge plpgsql;
 
 create or replace function squidtalk.list_buckets( _domain text, _user text ) returns setof text as $$
+declare
+	act boolean;
 begin
-
+	select squidtalk.apply_acl(_domain,_domain,_user, "read") into act;
+	if not act then
+		return ''::text;
+	end;
+	return query select name from squidtalk.buckets where domain = _domain;
 end
 $$ language plpgsql;
 
