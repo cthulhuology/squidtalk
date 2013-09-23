@@ -1,6 +1,9 @@
 
+drop schema if exists squidtalk cascade;
+create schema squidtalk;
 -- This table squidtalk.maps user accounts to the individual domains
 -- It also serves as the list of names for the acls
+drop table if exists squidtalk.users;
 create table squidtalk.users (
 	domain text,
 	email text,
@@ -21,10 +24,10 @@ begin
 		where domain = _domain and email = _email;
 	if found and act then
 		return true;
-	end;
-	insert into squidtalk.users ( domain, email, name, created, active )
+	end if;
+	insert into squidtalk.users ( domain, email, name, created, active ) 
 		values ( _domain, _email, _name, now(), true);	
-	return FOUND;	
+	return found;	
 end
 $$ language plpgsql;
 
@@ -32,15 +35,15 @@ create or replace function squidtalk.login_user( _domain text, _email text, _tok
 begin
 	update squidtalk.users set authtoken = _token, expires = _expires, lastseen = now()
 		where domain = _domain and email = _email and active;
-	return FOUND;
+	return found;
 end
 $$ language plpgsql;
 
 create or replace function squidtalk.logout_user( _domain text, _email text ) returns boolean as $$
 begin
-	update squidtalk.users set authtoken = '', expires = now(), 
+	update squidtalk.users set authtoken = '', expires = now()
 		where domain = _domain and email = _email and active;
-	return FOUND;
+	return found;
 end
 $$ language plpgsql;
 
@@ -54,8 +57,8 @@ begin
 		where name = _domain and owner = _email and active;
 	if found then
 		select squidtalk.disable_domain(_domain,_email);
-	end;
-	return FOUND;
+	end if;
+	return found;
 end
 $$ language plpgsql;
 
@@ -75,6 +78,7 @@ $$ language plpgsql;
 --
 --	{ "permission" : [ "email@address" ], }
 --
+drop table if exists squidtalk.acls;
 create table squidtalk.acls (
 	domain text,
 	bucket text,
@@ -89,14 +93,14 @@ begin
 		where domain = _domain and bucket = _bucket;
 	if found then
 		return false;
-	end;
+	end if;
 	insert into squidtalk.acls ( domain, bucket, permissions, created, active)
 		values ( _domain, _bucket, _permissions, now(), true);
 	return found;
 end
 $$ language plpgsql;
 
-create or replace function squidtalk.apply_acl( _domain text, _bucket text, _user text, _capability ) returns boolean as $$
+create or replace function squidtalk.apply_acl( _domain text, _bucket text, _user text, _capability text ) returns boolean as $$
 declare
 	act boolean;
 begin
@@ -106,14 +110,14 @@ begin
 		where domain = _domain and email = _user;
 	if not found or not act then
 		return false;
-	end;
+	end if;
 	-- conceptually this is what we want the behavior to be
 	-- but I have no idea if this works in practice!
 	select _user << permissions->(_capability) into act from squidtalk.acls
 		where domain = _domain and bucket = _bucket and active;
 	if not found or not act then
 		return false;
-	end;
+	end if;
 	return true;
 end
 $$ language plpgsql;
@@ -125,7 +129,7 @@ begin
 	select squidtalk.apply_acl(_domain,_domain,_user,'update') into act;
 	if not act then
 		return false;
-	end;
+	end if;
 	update squidtalk.acls set active = false
 		where domain = _domain and bucket = _bucket;	 	
 	return found;
@@ -139,9 +143,9 @@ begin
 	select squidtalk.apply_acl( _domain, _bucket, _user, 'update') into act;
 	if not act or domain = _bucket then
 		return false;
-	end;
+	end if;
 	update squidtalk.acls set permissions = _permissions
-		where domain = _domain and bucket = _bucket, and active;
+		where domain = _domain and bucket = _bucket and active;
 	return found;	
 end
 $$ language plpgsql;
@@ -149,6 +153,7 @@ $$ language plpgsql;
 
 -- This table squidtalk.contains the list of domains
 -- and keeps track of the admin for each domain
+drop table if exists squidtalk.domains;
 create table squidtalk.domains (
 	name text,
 	owner text,
@@ -161,7 +166,7 @@ begin
 	select name from squidtalk.domains where name = _domain and active;
 	if found then
 		return false;
-	end;
+	end if;
 	insert into squidtalk.domains ( name, owner, created, active )
 		values ( _domain, _user, now(), true );
 	-- create the default acl where the owner can do anything
@@ -185,7 +190,7 @@ begin
 		where name = _domain and owner = _user;
 	if not found or not act then
 		return false;
-	end;
+	end if;
 	-- NB: This disables all of the buckets and data associated with
 	-- the domain.  The data is retained but is inaccessible!
 	update squidtalk.domains set active = false where name = _domain;
@@ -204,7 +209,7 @@ begin
 		where name = _domain and owner = _user;
 	if not found or not act then
 		return false;
-	end;
+	end if;
 	update squidtalk.acls set permissions = _permissions 
 		where domain = _domain and bucket = _domain and active;
 	return found;
@@ -220,7 +225,7 @@ begin
 		where name = _domain and owner = _user;
 	if not found or not act then
 		return false;
-	end;
+	end if;
 	-- NB: this deletes all data associated with the domain!!!!
 	-- once you do this you can not recover.
 	delete from squidtalk.domains where name = _domain and owner = _user;
@@ -250,6 +255,7 @@ $$ language plpgsql;
 
 -- This table squidtalk.contains a list of buckets per domain
 -- and keeps track of the admin on each domain's bucket
+drop table if exists squidtalk.buckets;
 create table squidtalk.buckets (
 	domain text,
 	name text,
@@ -266,13 +272,13 @@ begin
 	select squidtalk.apply_acl(_domain,_domain,_user,'create') into act;
 	if not act then
 		return false;
-	end;
+	end if;
 	-- verify that the bucket doesn't already exist in this domain
 	select name from squidtalk.buckets
 		where domain = _domain and name = _bucket and active;
 	if found then
 		return false;
-	end;
+	end if;
 	insert into squidtalk.buckets (domain, name, owner, created, active)
 		values ( _domain, _bucket, _user, now(), true );
 	-- create the default acl where the owner can do anything
@@ -296,7 +302,7 @@ begin
 	select squidtalk.apply_acl(_domain,_domain,_user, "update") into act;
 	if not act or domain = _bucket then
 		return false;
-	end;
+	end if;
 	-- NB: this disables all data associated with the bucket as well!
 	-- the data is still there, it just can't be accessed
 	update squidtalk.buckets set active = false
@@ -317,7 +323,7 @@ begin
 	select squidtalk.apply_acl(_domain,_domain,_user, "delete") into act;
 	if not act then
 		return false;
-	end;
+	end if;
 	-- NB: this deletes all buckets of the same name on the domain
 	-- and all of the data contained therein.
 	delete from squidtalk.acls where domain = _domain and bucket = _bucket;
@@ -336,10 +342,10 @@ begin
 	select squidtalk.apply_acl(_domain,_bucket,_user, "delete") into act;
 	if not act then
 		return false;
-	end;
+	end if;
 	delete from squildtalk.value where domain = _domain and bucket = _bucket and not active;
 	return found;
-end;
+end
 $$ language plpgsql;
 
 
@@ -351,11 +357,11 @@ begin
 	select squidtalk.apply_acl(_domain,_domain,_user, "update") into act;
 	if not act then
 		return false;
-	end;
+	end if;
 	update squidtalk.acls set permissions = _permissions where domain = _domain and bucket = _bucket;
 	return found;
 end
-$$ languge plpgsql;
+$$ language plpgsql;
 
 create or replace function squidtalk.list_buckets( _domain text, _user text ) returns setof text as $$
 declare
@@ -363,15 +369,16 @@ declare
 begin
 	select squidtalk.apply_acl(_domain,_domain,_user, "read") into act;
 	if not act then
-		return ''::text;
-	end;
+		return;
+	end if;
 	return query select name from squidtalk.buckets where domain = _domain;
 end
 $$ language plpgsql;
 
 -- This table squidtalk.contains the key/value pairs for each bucket
--- values are stored in time order, and marked active false
+-- values are stored in time order and marked active false
 -- when they are superceeded
+drop table if exists squidtalk.value;
 create table squidtalk.value (
 	domain text,
 	bucket text,
@@ -390,15 +397,15 @@ begin
 	select squidtalk.apply_acl(_domain,_bucket,_user,"create") into act;
 	if not act then
 		return false;
-	end;
+	end if;
 	select name from squidtalk.value where domain = _domain and bucket = _bucket and name = _name and active;
 	if found then
 		return false;
-	end;
+	end if;
 	insert into squidtalk.value ( domain, bucket, name, value, created, active ) values ( _domain, _bucket, _user, _name, _value, now(), true);
 	return found;
-end;
-$$ language plgpsql;
+end
+$$ language plpgsql;
 
 
 -- update value does not replace the existing value but deactiveates it and creates a new value.
@@ -411,25 +418,25 @@ begin
 	select squidtalk.apply_acl(_domain,_bucket,_user,"update") into act;
 	if not act then
 		return false;
-	end;
+	end if;
 	update squidtalk.value set active = false  where domain = _domain and bucket = _bucket and name = _name and active;
 	insert into squidtalk.value ( domain, bucket, name, value, created, active ) values ( _domain, _bucket, _user, _name, _value, now(), true);
 	return found;
-end;
-$$ languge plpgsql;
+end
+$$ language plpgsql;
 
 -- disables the current value, this leaves no active value so you can create it again but it can also be futher updated.
-create or replace function squidtalk.disable_value(_domain text, _bucket text, _user text, _name text) ) returns boolean as $$ 
+create or replace function squidtalk.disable_value(_domain text, _bucket text, _user text, _name text ) returns boolean as $$ 
 declare
 	act boolean;
 begin
 	select squidtalk.apply_acl(_domain,_bucket,_user,"update") into act;
 	if not act then
 		return false;
-	end;
+	end if;
 	update squidtalk.value set active = false where domain = _domain and bucket = _bucket and name = _name and active;
 	return found;
-end;
+end
 $$ language plpgsql;
 
 -- permanently deletes the value and all of it's history, it cannot be recovered once it is deleted
@@ -440,10 +447,10 @@ begin
 	select squidtalk.apply_acl(_domain,_bucket,_user,"delete") into act;
 	if not act then
 		return false;
-	end;
-	delete from squidtalk.value where domain = _domain and bucket = _bucket, and name = _name;
+	end if;
+	delete from squidtalk.value where domain = _domain and bucket = _bucket and name = _name;
 	return found;
-end;
+end
 $$ language plpgsql;
 
 -- purges all of the disabled values for a given key, leaving only the current active data
@@ -454,10 +461,10 @@ begin
 	select squidtalk.apply_acl(_domain,_bucket,_user,"delete") into act;
 	if not act then
 		return false;
-	end;
+	end if;
 	delete from squidtalk.value where domain = _domain and bucket = _bucket and name = _name and not active;
 	return found;
-end;
+end
 $$ language plpgsql;
 
 -- gets the value associated with the given key 
@@ -467,22 +474,22 @@ declare
 begin
 	select squidtalk.apply_acl(_domain,_bucket,_user,"read") into act;
 	if not act then
-		return false;
-	end;
+		return;
+	end if;
 	return query select value from squidtalk.value where domain = _domain and bucket = _bucket and name = _name and active;
-end;
+end
 $$ language plpgsql;
 
 -- gets a list of keys for a given bucket
-create or replace function squidtalk.list_value(_domain text, _bucket text, _user text) return setof text as $$
+create or replace function squidtalk.list_value(_domain text, _bucket text, _user text) returns setof text as $$
 declare
 	act boolean;
 begin
 	select squidtalk.apply_acl(_domain,_bucket,_user,"read") into act;
 	if not act then
-		return false;
-	end;
+		return;
+	end if;
 	return query select name from squidtalk.value where domain = _domain  and bucket = _bucket and active;
-end;
-$$ laguage plpgsql;
+end
+$$ language plpgsql;
 
