@@ -162,8 +162,10 @@ create table squidtalk.domains (
 );
 
 create or replace function squidtalk.create_domain( _domain text, _user text ) returns boolean as $$
+declare 
+	domain text;
 begin
-	select name from squidtalk.domains where name = _domain and active;
+	select name into domain from squidtalk.domains where name = _domain and active;
 	if found then
 		return false;
 	end if;
@@ -241,7 +243,7 @@ $$ language plpgsql;
 -- returns a list of domains owned by the given user
 create or replace function squidtalk.list_domains( _user text ) returns setof text as $$
 begin
-	return query select name from domains where owner = _user and active;
+	return query select name from squidtalk.domains where owner = _user and active;
 end
 $$ language plpgsql;
 
